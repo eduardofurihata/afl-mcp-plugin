@@ -335,25 +335,18 @@ first run, not after.**
 Two per-step settings from the source do **not** land where you expect, and both were
 copied straight across in 2026-08-20 with nothing complaining.
 
-**The step's time.** `timeoutSeconds` accepts up to **1445** on an agent step (245 s of
-inline dispatch + the 1200 s deadline of the background task — it used to say 1800, which
-no path could reach), and that is the step's deadline — but the **inline turn** of an
-agent step is capped at **245 s** (the transport below it ends at 270 s and the model
-needs the difference to write its final answer). Steps
-designed for thirty minutes got two and a half, and the tools dispatched in the last act
-came back with `durationMs: 1` and "the task deadline was reached before this tool
-finished". Four of the six failures in that run were this, and nothing but the failure
-itself said so. Two places now do the arithmetic for you instead of leaving you with the
-number you wrote: `get_squad` attaches a **`turnBudget`** block to every agent step
-(`configuredTimeoutSeconds`, `effectiveInlineTurnSeconds`, `inlineTurnCapSeconds` and a note
-when they diverge), and `create_squad`/`update_squad` **warn** — they do not refuse, because
-the background path legitimately uses the larger number. In the run projection the step
-carries `effectiveTimeoutSeconds`, with `configuredTimeoutSeconds` beside it when what you
-asked for was above the cap.
+**The step's time.** `timeoutSeconds` accepts up to **1445** on an agent step, and since
+AV-2649 the agent's turn uses it **in full**: the turn runs asynchronously (started, polled,
+cancellable — no HTTP connection held), so a step answered inline can work for 20+ minutes.
+Before that, the inline turn was capped at 245 s by the transport, and steps designed for
+thirty minutes got two and a half — four of the six failures in one run. `get_squad` attaches a
+**`turnBudget`** block to every agent step (`configuredTimeoutSeconds`,
+`effectiveInlineTurnSeconds`, `inlineTurnCapSeconds`), and the run projection carries
+`effectiveTimeoutSeconds`.
 
-So: **size each step to finish inline in under ~245 s, or push the long work to a background
-task** (`executar_em_background`, ~20 min, collected by polling — this is the only path on
-which a `timeoutSeconds` above the inline cap buys anything). A source step that did
+So: **give each long step the deadline its work needs** (the default is 245 s; a prototype or
+a design-system extraction asks for 900–1445 s). `timeoutSeconds` is a ceiling, not a wait.
+A source step that did
 "fetch the query + run heavy SQL + aggregate four weeks + compute deviations" is not one AFL
 step; it is three, or one background task.
 
@@ -403,7 +396,7 @@ discover it before running — so budget for one throwaway run.
 9.  Draw the DAG                one edge per `inputFile` (conversion table), `approval` at
                                checkpoints, + `onOutcome`/`maxLoops` for rejection loops;
                                parameters via `trigger_schema` or a step that emits them
-10. Size the steps             inline turn ~245 s; longer work goes to background
+10. Size the steps             timeoutSeconds by the step's work, up to 1445 s
 11. Run it once ponta a ponta  with scope declared and missing sources named out loud
 12. READ THE WHOLE OUTPUT      and the tool calls behind it — `completed` is not proof
 13. Close the gate below       eight items; unfinished means unmigrated
@@ -431,8 +424,8 @@ real migration missed while looking complete from every angle the hub offers.
 - [ ] Every **execution parameter** (reference date, period, target) has a step that fixes and
       emits it — or a declared trigger contract. Never "it comes in the trigger".
 - [ ] No instruction asks for **method by literal term in a semantic search**.
-- [ ] The steps were calibrated against the **real turn budget** (~245 s inline; longer work
-      in background), not against the `timeoutSeconds` the API accepts.
+- [ ] Each long step **declares the deadline its work needs** (default 245 s, up to 1445 s);
+      work bigger than 1445 s is split into steps.
 - [ ] What the source did and AFL has **no equivalent** for is **written down**: code
       execution, shared disk, `model_tier`, layout libraries, local connectors.
 - [ ] The first **end-to-end run** was executed and checked **by its `toolCalls`** — not by

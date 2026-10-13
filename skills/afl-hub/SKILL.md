@@ -95,21 +95,20 @@ recreate. Only *absence from the list* justifies calling `criar_app_web` again. 
 list does not carry the manifest — to read what an app actually authorizes, use
 **`mcp__afl__get_app_web`** (see "Reading an app's contract" below).
 
-**4. `chat_with_agent` inside a squad step ≠ `chat_with_agent` directly.**
-A squad step's `timeoutSeconds` reaches 1445, but the turn the agent answers **inline**
-is cut at **245s** — the HTTP leg under it stops at 270s and the model needs the
-difference to write its final answer. (1445 = 245s of inline dispatch + the 1200s
-deadline of the background task; the ceiling used to say 1800, a number no path could
-reach.) The same prompt that finishes in a direct call —
-where your client can move it to background — blows the deadline inside a step, and the
-tools dispatched in the last act come back with `durationMs: 1` and "the task deadline
-was reached before this tool finished". Work that does not fit in 245s must go to
-**background** (`executar_em_background`, ~20 min, collected by polling), and only then
-does a `timeoutSeconds` above 245 buy you anything. Do not calibrate from the number the
-field accepts: `get_squad` publishes the arithmetic per agent step in **`turnBudget`**
-(`configuredTimeoutSeconds`, `effectiveInlineTurnSeconds`, `inlineTurnCapSeconds`), and
-`create_squad`/`update_squad` warn — without refusing, since the background path
-legitimately uses the larger number.
+**4. A squad agent step gets its whole `timeoutSeconds`.**
+The turn of an agent step runs **asynchronously** (since AV-2649): the workflow starts
+it, gets an id back immediately and polls it — no HTTP connection is held open, so the
+turn the agent answers inline uses the step's `timeoutSeconds` **in full**, up to
+**1445s**. Until then it was cut at 245s (the old 270s HTTP leg minus the final-answer
+margin), and only work sent to background went past that. Calibrate `timeoutSeconds` by
+the work of the step — it is a ceiling, not a wait; the turn ends when the agent answers.
+Default is 245s; long steps (a prototype, extracting a design system, heavy reading)
+declare 900–1445s. `executar_em_background` (~20 min) remains available for work the
+agent wants to separate from the turn. When the deadline does run out, tools dispatched
+after it come back with `durationMs: 1` and "the task deadline was reached before this
+tool finished". `get_squad` publishes each agent step's budget in **`turnBudget`**
+(`configuredTimeoutSeconds`, `effectiveInlineTurnSeconds` — now equal to the configured
+value — and `inlineTurnCapSeconds` = 1445).
 
 **5. Judge a running step by its heartbeat.** See `get_squad_run` below: fresh
 heartbeat with `elapsedSeconds` climbing = working. `overdue` is anomalous and
@@ -1032,21 +1031,15 @@ lacks it — surface verbatim):
   accept a `stepKey`. Read the returned `steps[].id` if you plan to `update_squad`
   (`update_squad_step` addresses a step by either one — `stepKey` or `id`).
   Step limits are enforced at the boundary with a message that names the field:
-  `timeoutSeconds` 30–1800 (default 245 — the full inline turn; it was 170, below the 180s of free
-  clock an image needs, so a default `agent` step never generated one; **1445** on an `agent` step),
+  `timeoutSeconds` 30–1800 (default 245 — it was 170, below the 180s of free clock an image
+  needs, so a default `agent` step never generated one; **1445** on an `agent` step),
   `maxRetries` 0–3, `retryDelaySeconds` 5–300. A step whose image was refused for lack of clock
   carries `imageRefusedForTime` (cause + what to adjust) in `get_squad_run`.
-  An `agent` step may now hand long work to a **background task** and wait for it, which
-  is why its ceiling is 1445s — 245s of inline dispatch plus the 1200s deadline of the
-  background task, the most the path can actually spend — but the turn the agent answers
-  **inline** is capped at
-  **245s** (270s of HTTP minus the margin the model needs to write the final answer). So:
-  work that fits inline must fit in 245s; work that doesn't goes to background, and only
-  then does a `timeoutSeconds` above 245 buy you anything. Above it the tools
-  create/update **warn** instead of refusing (refusing would kill the background path and
-  break every squad already carrying a long deadline), and `get_squad` attaches the resolved
-  **`turnBudget`** to each agent step so the two numbers never have to be reconciled by
-  hand.
+  The turn of an `agent` step is **asynchronous** (AV-2649): started, polled and cancellable,
+  with no connection held — so it uses the configured `timeoutSeconds` in full, up to 1445s,
+  answering inline. (Before, the inline turn was capped at 245s by the 270s HTTP leg, and only
+  background work used the larger number.) A value above 1445 is reduced to 1445 with a
+  warning, and `get_squad` attaches **`turnBudget`** to each agent step.
   **A step that declares its own failure in prose still closes `completed`.** Six agent
   steps in one production run answered `FALHA: …`, exactly as their prompts told them to,
   and the DAG walked node by node to the human gate, which then sat three days waiting for
