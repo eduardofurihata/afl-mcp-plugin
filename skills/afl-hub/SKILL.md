@@ -1868,7 +1868,7 @@ returns it, and the `integrationUuid` it gives you is *literally* the value
   `web_scraping`, `mcp_server`, `hubspot_data`, `linkedin_data`, `microsoft_365_data`,
   `tuya_devices`, `whatsapp_data`, `jira_data`, `education_platform`, `meta_ads_data`.
   Aliases (`jira`,
-  `notion`, `databricks`, `postgres`, `sheets`, `mcp`, …) are normalized, and an
+  `notion`, `databricks`, `postgres`, `sqlserver`, `sheets`, `mcp`, …) are normalized, and an
   unrecognized type is **refused listing the valid ones** rather than silently accepted.
   **`mcp__afl__list_source_types`** (`datasources:read`, no args, writes nothing) returns
   that catalog machine-readable: per type the group, whether it `requiresIntegrationUuid`,
