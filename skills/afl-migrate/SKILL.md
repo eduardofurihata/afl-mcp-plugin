@@ -81,22 +81,24 @@ writing, that it does **not** produce KPIs.
 
 A step of type **`approval`** pauses the run inside the DAG. It takes
 `approverUserIds: [...]` **or** `approverGroupRole: "admin" | "member"` — one of them is
-mandatory — plus an optional `message`, `expiresInHours` (default 168, seven days) and
-`maxLoops`, the review loop described below.
+mandatory — plus an optional `message`, `expiresInHours` (default 168, seven days),
+`maxLoops` (the review loop described below) and the **checkpoint** keys: `fields` (typed
+questions answered to move forward), `requireFiles` and `options` (named paths, each with its
+own branch).
 
 Measured: a run sat in `waiting_approval` past **407 seconds** with `timeoutSeconds: 300`
 on that same step. Approval is **not** governed by the step timeout; the two deadlines
 govern different things. Without knowing this, the instinct is to break a 12-step
 pipeline into four hand-stitched squads. Don't.
 
-**But a checkpoint that produces a PARAMETER is a different animal from one that produces a
-DECISION.** `approval` collects a decision. When the source's checkpoint emitted an
+**A checkpoint that produces a PARAMETER needs the parameter to be a FIELD, not prose.** A
+bare `approval` collects only a decision and a free-text note. When the source's checkpoint emitted an
 artifact that later steps read — a reference date, a period, a chosen target — porting it as
 "the value comes in the trigger message" ports nothing: the trigger is free text, and four
 root steps fired in parallel on an input no structure guaranteed. The first one answered
 *"FALHA: the reference date was missing from the trigger"*, and it was right.
 
-**Rule: every execution parameter has a step that fixes it and emits it.** Two ways, in
+**Rule: every execution parameter has a step that fixes it and emits it.** Three ways, in
 order of preference:
 
 1. Declare the contract on the squad — **`trigger_schema`** on `create_squad`/`update_squad`,
@@ -105,7 +107,15 @@ order of preference:
    a missing `required` field **refuses the run before the first step is spent**, and the
    values reach the steps as a stable `[ENTRADA DO DISPARO]` block in the trigger. The
    contract is frozen into the run's snapshot along with steps and edges.
-2. When the value has to be looked up or normalized rather than typed in, make it a real
+2. When the value only exists **mid-run** (the PM answers after seeing a draft), declare it on
+   the checkpoint itself: `approval.config.fields` (same shape as `trigger_schema`). Moving
+   forward is refused until the required ones are answered, and the answers reach the next
+   steps in the gate's output. New material (a spreadsheet, the right example) goes the same
+   way: `requireFiles: true`, and the attached files join the run's file pool. A checkpoint
+   with 3–4 outcomes ("approve", "redo spec", "back to discovery", "cancel") ports as
+   `options` + one `onOutcome: "approved:<id>"`/`"rejected:<id>"` edge per path — the
+   branches not chosen end `skipped`.
+3. When the value has to be looked up or normalized rather than typed in, make it a real
    step: an `agent` step that reads and normalizes the value, followed by an `approval` so a
    human confirms it. It costs one LLM turn to do form validation — which is why option 1
    comes first — but it is a step that **emits** the parameter, and its children inherit it

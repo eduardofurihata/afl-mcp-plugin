@@ -920,7 +920,7 @@ lacks it — surface verbatim):
   **`approval`** (human gate, pauses the run) → `{ approverUserIds: [...] }` **or**
   `{ approverGroupRole: "admin" | "member" }` — **one of them is mandatory**
   (optional: `message`, `expiresInHours`, default 168; in a **personal** squad omit both —
-  the approver is you, declared by the hub) ·
+  the approver is you, declared by the hub; and the **checkpoint** keys below) ·
   `action` → `{ actionType, messageContent?, actionConfig }` with `actionType` in
   `send_inbox_notification` · `webhook` (needs `actionConfig.webhookUrl`) ·
   `send_whatsapp` (needs `actionConfig.whatsappRecipient` in a **personal** squad; in an
@@ -1024,6 +1024,25 @@ lacks it — surface verbatim):
   and the **reviewer's note is injected into the reopened step's prompt**
   (a "REVISÃO REPROVADA — refaça o trabalho (ciclo N de M)" block), so you do
   **not** stitch the feedback into the prompt yourself. Once the cycles are spent,
+  **The gate is also a CHECKPOINT that collects data, material and a path**
+  (AV-2648) — the pieces a PM checkpoint asks for mid-run:
+  `fields` (same shape as `trigger_schema`: `[{ key, label?, type, required?, options? }]`)
+  are what the decider must **answer to move forward** — refused with 400 naming the
+  field when missing or out of the list, never required on a rejection; the answers
+  reach the next steps as a `## Respostas do checkpoint` block in the gate's output
+  (so `{{outputs.<gateKey>}}` carries them). `requireFiles: true` makes moving forward
+  require at least one attached file; files attached at a decision (forward **or** on a
+  rejection loop) join the run's **file pool** — the "Arquivos da execução" tab and the
+  prompt of every later step — and a rejection's files also ride in the reopened step's
+  review block. `options: [{ id, label, kind: "approved" | "rejected" }]` (2–6) replaces
+  approve/reject with **named paths**, and then every conditional edge names its option:
+  `onOutcome: "approved:<id>"` is that option's branch — branches of the options **not**
+  chosen end `skipped` and the run still ends `completed` (a step whose edges from that checkpoint
+  are all unchosen paths is skipped even if another parent completed); `"rejected:<id>"` loops back to
+  an ancestor (counts in `maxLoops`); a `rejected` option with no edge ends the run as
+  rejected. Every `approved` option needs its own edge; plain `approved`/`rejected` edges
+  are refused once options exist. Each decision (and every earlier loop cycle) is kept on
+  the step's `approval` — chosen path, note, answers, files — readable in `get_squad_run`.
   a rejection behaves as it always did (fail + cascade), with an error saying it
   was rejected after N/N review cycles.
   Step and edge `id`s are **optional** — the hub generates them (and replaces
@@ -1057,8 +1076,9 @@ lacks it — surface verbatim):
   front, and the values are appended to the trigger message as a stable
   `[ENTRADA DO DISPARO]` block the steps can quote. Without it the trigger is free text:
   four root steps once fired in parallel on a reference date nothing guaranteed, and the
-  first one answered "FALHA: the reference date was missing from the trigger". An
-  `approval` step is not a substitute — it collects a **decision**, not a typed **value**.
+  first one answered "FALHA: the reference date was missing from the trigger". A value
+  that only exists **mid-run** goes in the `approval` step's `fields` (the checkpoint
+  above), which uses this same field shape.
   A squad is born as a **draft** (`is_active=false`) for review in the builder unless
   you pass `is_active: true`.
   **Agent triggering is an EXECUTION permission, not an edit (AV-2229).** `allow_agent_trigger`
