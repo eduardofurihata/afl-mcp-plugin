@@ -619,6 +619,30 @@ lacks it — surface verbatim):
     when you only have part of it: `thread_id` (threads in Gmail only, and needs
     the same subject as the thread) and `in_reply_to`/`references` (thread
     everywhere else).
+  - **GitHub: write files with `github_files_commit`, branch with `github_branch_create`**
+    (since 2026-10, AV-2642). `github_files_commit` `{ agentId, repo, branch, message,
+    files: [{ path, content, encoding? }] }` writes N files in ONE atomic commit (create
+    or overwrite; it never deletes; the rest of the repo is untouched). The branch must
+    exist — `github_branch_create` `{ agentId, repo, branch, from_branch? }` makes one
+    from the repo's default branch. Review flow: branch → commit → `github_pr_create`.
+    A protected branch or a repository ruleset refuses direct commits, with no retry
+    (the error says so: commit to a new branch and open a PR). If someone else pushes mid-commit, it is redone on top of
+    their work, never forced. Limits: 100 files / 5 MB per commit; `.github/workflows/`
+    is refused (no `workflow` OAuth scope). Overwriting an executable keeps its
+    executable bit; a path that is a symlink, a submodule or a folder is refused. A
+    "Sem acesso ao repositório" reply means the connected account can't see the repo
+    (renamed, deleted, access revoked): report it, don't create a branch. Every GitHub
+    write — issues, PRs, comments, branch, commit — checks the source's **write**
+    permission at execution. A read-only GitHub source is refused with "ative a escrita
+    na fonte". The repo must be on a WRITABLE source's list, and a writable source that
+    lists no repo blocks writes. A deactivated source counts for nothing (no read, no
+    write). Before AV-2642 the hub let issue/PR writes through a
+    read-only source. **HubSpot** does the same since AV-2630: `hubspot_crm_create`,
+    `_update`, `_note`, `_attach`, `_activity` and `_delete` need the source's effective
+    write (source ∧ link). A read-only HubSpot source still reads (`hubspot_search`,
+    `datasource_hubspot`); writes are refused with "Escrita não permitida" naming the
+    source and where to switch it to "Leitura e escrita", before any call to HubSpot.
+    `hubspot_crm_delete` also needs the agent's "Permitir exclusão".
   - **`jira_criar_issue`: `epic` and `parent_key` both take an issue key.** The
     epic is applied as the issue's parent, and `parentApplied` in the result tells
     you whether it took — no second read needed.
