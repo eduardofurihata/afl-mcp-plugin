@@ -2033,7 +2033,7 @@ returns it, and the `integrationUuid` it gives you is *literally* the value
   that org's sources. The source's agent links go with it (connected agents lose its tools at
   once). "Could not verify the scope" is **not** "source missing" — retry, never recreate.
 - **`mcp__afl__create_mcp_connection`** (`datasources:write`)
-  `{ name, url, headers?, auth_type?, auth_value?, dedupe_by_url? }` — registers an external
+  `{ name, url, headers?, auth_type?, auth_value?, oauth_client_id?, oauth_client_secret?, oauth_scopes?, dedupe_by_url? }` — registers an external
   MCP server as a connection and discovers its tools (handshake + `tools/list`), returning the
   `integrationUuid` plus the tool catalog with the ids a data source needs. This is what lets you
   build an `mcp_server` source without the UI: feed the uuid into `create_data_source` with
@@ -2041,6 +2041,18 @@ returns it, and the `integrationUuid` it gives you is *literally* the value
   DIFFERENT credential is refused (it never overwrites another account's credential). Personal
   scope only — an org MCP connection is still a UI step. The URL must be publicly reachable
   (private IPs, internal hosts and cloud metadata endpoints are blocked).
+  **Servers that require login (OAuth)**: `auth_type: "oauth"` (+ `oauth_client_id?`,
+  `oauth_client_secret?`, `oauth_scopes?`; never with `auth_value`/`headers`). The connection is
+  created **waiting for login** — no tools yet — and the response carries
+  `authorization: { connectUrl, redirectUri, clientIdRequired }`. **You cannot log in for
+  anyone**: show `connectUrl` to the person; they connect THEIR OWN account in the AFL screen,
+  and only then call `list_mcp_tools`/`create_data_source`. `clientIdRequired: true` = the server
+  has no automatic client registration: register `redirectUri` in the provider's OAuth app and
+  repeat the call with `oauth_client_id` (the same URL is reused). In an organization each
+  member connects their own account; a member's login never serves another one.
+  - Reading an OAuth source for a person who has not connected (or whose login expired)
+    fails with `mcp_oauth_authorization_required` and a `connectUrl` — relay the link; never
+    retry with another source or credential.
   **`mcp__afl__delete_mcp_connection`** `{ integration_uuid }` (`datasources:write`) removes
   YOUR personal connection. It **refuses while any of your `mcp_server` sources still uses
   it** (they would go inert, failing only on their first run) — delete those with
