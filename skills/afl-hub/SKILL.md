@@ -91,7 +91,8 @@ there before retrying. The list is newest-first with `status`
 written right now: **wait and list again, do not re-call** (that creates a second
 app; `openUrl` is withheld while there is no page). **A draft is not a failure.**
 `falhou` means the generation died — `failedReason` says why, and that one you may
-recreate. Only *absence from the list* justifies calling `criar_app_web` again. The
+recreate. Only *absence from the list* justifies calling `criar_app_web` again.
+Organization apps also carry `payer` (who pays — see "Reading an app" below). The
 list does not carry the manifest — to read what an app actually authorizes, use
 **`mcp__afl__get_app_web`** (see "Reading an app's contract" below).
 
@@ -2356,6 +2357,19 @@ Alongside the manifest it returns the state that explains behaviour: `status`,
 `allowedDomains`, plus `usage`. When the manifest's own `visibility` differs from the
 effective one — `editar_app_web` edits the manifest without publishing — the response
 says so in `visibilityDivergence`.
+
+**Who pays — `payer` (organization apps only).** Every organization app has a declared
+payer, and both `get_app_web` and each `listar_apps` item return
+`payer: { type, costCenterId, costCenterName, estado }`. `type` is what was declared
+(`cost_center` | `organization`, `null` before the cut-over); `costCenterName` is the
+declared center's name; `estado` is who actually pays: `centro_ativo` (that center),
+`organizacao` (the org was chosen), `centro_desativado` / `centro_removido` (a center that
+left circulation — the organization pays, no center), `sem_definicao` (not stamped yet —
+execution uses the owner's default) and `nao_lido` (the read failed, reason in `erro` —
+this is **not** "no payer", it is "unknown"). Null keys stay; the shape is fixed. It never
+carries consumption (how much the center spent). Changing the payer is not a hub tool: the
+owner does it by (re)publishing, an admin by "Mudar para Organização", both in the UI.
+Personal apps have no payer and no `payer` key.
 
 **`generationSpec` is the frozen brief, not the page — never answer form questions from
 it.** It is the `descricao` you passed to `criar_app_web`, written once and **rewritten
