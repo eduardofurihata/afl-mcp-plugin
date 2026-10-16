@@ -921,6 +921,20 @@ lacks it — surface verbatim):
   `{ approverGroupRole: "admin" | "member" }` — **one of them is mandatory**
   (optional: `message`, `expiresInHours`, default 168; in a **personal** squad omit both —
   the approver is you, declared by the hub; and the **checkpoint** keys below) ·
+  — in an **organization** squad every id in `approverUserIds` must be able to **open the
+  squad** with its final group scope: `create_squad`, `update_squad` and `update_squad_step`
+  refuse (400, `errors[].reason: "approver_cannot_see_squad"`, with `stepKey`, `userIds` and a
+  per-person `causes`: `outsideGroups` — add them to one of the squad's groups;
+  `groupAdminIsolated` — a group admin only opens squads of the groups they manage, so adding
+  them to a squad group does NOT help; `inactive`; `notInOrg`) any approver the save
+  **introduces**, including by changing `group_ids` so someone already there loses reach. A
+  **legacy** approver (already saved without reach and untouched, even if the step was renamed)
+  does not block: it comes back in `definitionWarnings` (`code: "approver_out_of_reach"`) and is
+  skipped at run time (with no valid approver the gate escalates to the org admins);
+  `approverGroupRole` is resolved at run time and not checked here; `get_squad` returns
+  `approverContacts` (`[{ userId, name, email }]`) — labels for declared approvers that have no
+  member row (today, the org owner), only for ids already in `approverUserIds`; label everyone
+  else from the member list, and an id in neither = user not found (`[]` in a personal squad) ·
   `action` → `{ actionType, messageContent?, actionConfig }` with `actionType` in
   `send_inbox_notification` · `webhook` (needs `actionConfig.webhookUrl`) ·
   `send_whatsapp` (needs `actionConfig.whatsappRecipient` in a **personal** squad; in an
@@ -1375,7 +1389,18 @@ lacks it — surface verbatim):
   deactivating never need it.
   `conditions`/`actions` are **REPLACE**: the array you send replaces the previous one
   whole. `monthly_cost_limit_brl` is the one field where **`null` is a VALUE** ("remove
-  the cap"), not absence — omitting it preserves what is stored. **`data_source_ids` works
+  the cap"), not absence — omitting it preserves what is stored (on create: born with no
+  cap). It is **reais**, from `0` to `99999999.99`, **at most 2 decimals**; `0` is a cap of
+  **zero** (every run is refused by the cap), never "no cap". An invalid value is refused
+  **before the round-trip**, naming `monthly_cost_limit_brl` and the rule, and nothing is
+  created or changed. Both writes echo `monthlyCostLimitBrl` **as stored**: the value
+  the database returned from the write itself, not your input; an update that omits the
+  field reads the stored cap, and if that read fails the field is **absent** from the
+  echo (absent = "not read", never `null` = "no cap" — call `get_automation`). And
+  `get_automation` returns it with the month's spend
+  (`monthCostBrl`, `null` when there was no exchange rate — then read `monthCostUsd`);
+  `monthlyCostLimitBrl: null` there means **no cap**. Same in personal and organization
+  context. **`data_source_ids` works
   in BOTH contexts**: in an organization every id is checked **one by one** and a source
   from outside the org is refused **naming the offending id**; the main source is folded
   into the list if you left it out, and an **empty list is a legitimate request** ("back to
