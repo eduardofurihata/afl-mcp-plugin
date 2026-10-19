@@ -52,6 +52,12 @@ yours (or your token's org) — pick another from `list_agents`.
 
 ## Rules that make the first attempt fail
 
+**Reading an error.** When AFL refuses a call (400, 404 for a resource, 409, 422) or reports an external provider outage
+(503 with a code, e.g. Google Drive), the error text is **the sentence the service wrote for
+you** — act on it as written. Internal failures (5xx without a code, network, timeout, and
+401/403 between AFL services) keep the full technical message (`Service "X" error for
+operation …`); that one is diagnosis, retry later or report it.
+
 Short list, high cost. Every item below is a failure that actually happened in
 production use — not a hypothetical. Read it before your first write call.
 
@@ -189,10 +195,11 @@ configuration"*. The same source, for the same file, created through the UI work
 UI writes the id where the reader looks and the hub only wrote it into `config`.
 
 The id is now promoted to that place from any of the spellings above, so **the hub and
-the UI produce equivalent sources**. `update_data_source` promotes it on **every call**,
-not only when you resend `config` — so repairing a source created before this is just
-`update_data_source { data_source_id }`; sending `config` stays valid when you also want
-to change the file or the type. The one case it cannot repair by itself is an **ambiguous
+the UI produce equivalent sources**. `update_data_source` repairs a source whose id lives
+only in `config` (empty column) on **every call**, not only when you resend `config` — so
+repairing a source created before this is just `update_data_source { data_source_id }`.
+To **change** the file, send the new id in `config.fileId`; see `update_data_source` below
+for what that does to the rest of the source. The one case it cannot repair by itself is an **ambiguous
 type** (`google_workspace`, which serves more than one service): with no discriminator the
 resolver returns no subtype and the alignment is a no-op, so there you must send the
 discriminator. `google_drive_folder` needs no id: absent means the **root** of the Drive,
@@ -2050,7 +2057,45 @@ returns it, and the `integrationUuid` it gives you is *literally* the value
     runtime reads** as well, not just the config — before, the config changed, the
     column stayed empty and the source stayed broken, so the obvious repair did not
     repair. The field is **not** required on update (the value may already be stored);
-    an unrecognized value is refused, naming the accepted ones.
+    an unrecognized value is **refused, naming the accepted ones, and nothing is written**
+    (AV-2504 — before, the update let it through to the column); an alias (`agenda`,
+    `planilha`…) becomes the canonical value.
+  - **Changing a Google source's FILE** (AV-2504): send the new id in `config.fileId`
+    (or `googleFileId`/`spreadsheetId`/`documentId`/`formId`/`folderId`). AFL **checks it
+    on Google Drive with the source's connected account** — an id that account cannot see
+    is **refused (422)** naming the file and the account, and nothing changes (an account
+    connected with restricted `drive.file` access only sees files picked in the AFL file
+    picker: change it in the UI then). **The file must fit the type the source will have
+    AFTER the save**: a spreadsheet for `google_sheet`, a document for `google_doc`, a form
+    for `google_forms`, a folder for `google_drive_folder` — and on `google_sheet`/`google_doc`
+    the service (`config.googleSourceType`, sent or stored) decides: `sheets`, `docs` or
+    `slides`. **To turn a spreadsheet source into a document (or presentation) source, send
+    the new id AND `config.googleSourceType: "docs"` (or `"slides"`) in the same update** — a
+    source the UI already switched to `docs` keeps it (the hub no longer rewrites it back to
+    `sheets`). A mismatch with the resulting type (say, a folder id on a spreadsheet source,
+    or a spreadsheet with `googleSourceType: "docs"`) is refused (422) naming both types,
+    and nothing changes. On success the **whole source** follows the new
+    file: the file column, the id in `config` (old spellings removed), name, type, URL and
+    the picker selection — which the agent and the UI read before the column. **The tabs
+    and range chosen for the old spreadsheet are cleared** (they belonged to another file),
+    and a multi-file selection collapses to the new file. Order of decision: the id **you**
+    sent → else the file the source uses → else the `config` id, only when the column is
+    empty. **An update without a file id never changes the file** — before AV-2504 the
+    stored `config` id won, so a file change answered "updated" without happening and any
+    update (even a rename) silently undid a change made in the UI. A **503 saying "try
+    again"** (`GOOGLE_DRIVE_TEMPORARILY_UNAVAILABLE`) is Google being down: nothing changed.
+    **The search index follows**: the old file's content leaves the source's search and the
+    source is fully re-indexed right after (also for a change made in the UI, or an edited
+    multi-file selection) — the new file shows up in search within a few minutes.
+  - **The answer says what actually changed** (AV-2504): AFL re-reads the source after
+    the write and compares. `updated` = fields whose value changed (including ones derived
+    from the file, like `googleFileName` and `sheetNames`), `unchanged` = fields you sent
+    that already had that value, `googleFile` = `{ id, name, mimeType }` the source uses
+    now, `verified: false` = something was not checked: if the re-read failed, `updated`
+    just repeats what you sent; if a field you sent has no known place to be read back,
+    it comes in `unverified` (never in `updated`).
+    It used to list the patch keys — `googleSourceType` showed up on every call — so a
+    change that did not happen looked done. Read `googleFile.id` to confirm a file change.
   - **An `mcp_server` source gets its server link repaired here too.** The runtime
     resolves the MCP server by the `mcpConnectionId` **column**, and neither
     `integration_uuid` nor `config` used to write it — an inert source had no repair by
