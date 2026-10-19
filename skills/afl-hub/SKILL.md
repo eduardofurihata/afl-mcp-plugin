@@ -753,7 +753,11 @@ lacks it — surface verbatim):
   Its counterpart is **`mcp__afl__delete_knowledge_document`** `{ agent_id, document_id }`
   (`tools:write`, facade over `op: "remover"`): the removal is permanent, so the answer is
   `pending_confirmation` with a `confirmationId` — **nothing is removed until you call
-  `confirm_action`** with it. Only documents you uploaded can be removed. **Indexing is asynchronous** — a search fired immediately after may still
+  `confirm_action`** with it. On a personal agent only documents you uploaded can be removed.
+  **Organization agent: writing (add/remove) needs the Train or Administer permission on that
+  agent, or organization admin** — the base answers everyone who talks to the agent, so
+  Interact alone is refused (`KNOWLEDGE_WRITE_FORBIDDEN`, nothing stored); with the right
+  permission you can remove any document of that agent, whoever uploaded it. **Indexing is asynchronous** — a search fired immediately after may still
   return nothing; confirm with `op: "listar"` before concluding anything. And
   `is_critical: true` documents are **injected into the prompt, not indexed**, so
   `search_knowledge_base` will never return them: verify those by asking the agent to
