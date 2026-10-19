@@ -1496,7 +1496,11 @@ above.
     steps with `semModelo: true` run without the model, at no model cost; each other step is
     ~1 call; `custoEstimadoUsd` null = no measurement yet). **Show the estimate to the user
     before approving**;
-  - `get_architect_run` — still working; poll again;
+  - `get_architect_run` — still working; poll again. A run that created/edited an AFL App may
+    stay in `verificando` for up to ~20 min (`aguardando_app` events): the platform waits for the
+    page, then reviews it against the plan and tests its READ actions (`app_revisado`; writes and
+    agent chats are never executed in the test) before terminating — poll every ~1 min, don't
+    cancel or redo the app; the final summary carries the review per action;
   - `decisao_do_usuario` (`aguardando_orcamento`) — cap reached: raise it in the UI
     (`url`) or cancel;
   - `nenhuma` — terminal (`concluido`, `concluido_com_pendencias`, `cancelado`, `falhou`,
