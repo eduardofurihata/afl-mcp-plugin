@@ -79,9 +79,16 @@ for compatibility, `url` is the contract.
 **are hub tools now** (`tools:write`, since 2026-08-07). They validate the contract
 synchronously — a refusal comes back whole, with the full list of problems — and then
 dispatch the page write, which takes minutes, returning
-`{ "dispatched": true, "task_id": "..." }`. **A `task_id` means nothing has been
-produced yet**: fetch the outcome with `get_task_result`, and watch the app with
-`get_app_web`. (Observed before this: 4m17s between the reply and the app existing.)
+`{ "dispatched": true, "task_id": "...", "app_id": "<uuid>", "tool": "...", "instruction": "..." }`
+(no `isError`). **A `task_id` means nothing has been produced yet**: fetch the outcome
+with `get_task_result`. `app_id` is the app the dispatch **reserved** (`criar_app_web`)
+or the one being edited (`editar_app_web`) — keep it and watch that app with
+**`get_app_web { app_id }`** instead of searching `listar_apps` by title: `gerando`
+(or, on an edit, `pendingPageEdit` present) = still in progress; `rascunho`/`publicado`
+without `pendingPageEdit` = done; `falhou` = the generation died (`failedReason`). If a
+reply ever comes without `app_id`, the server did not have it — fall back to
+`listar_apps` (`created_within_minutes`), never guess an id. (Observed before this:
+4m17s between the reply and the app existing.)
 The row, though, is **reserved at dispatch**: the app shows up in
 **`mcp__afl__listar_apps`** (`agents:read`) from the first instant, as
 `status: "gerando"`. So a missing reply is answerable instead of a guess — confirm
@@ -2657,7 +2664,7 @@ operation, and routing it through `chat_with_agent` meant paying for an LLM — 
 to verify — to run it. Worse, two of the hub's own hints told you to use
 `editar_app_web`, a tool the client did not have; a hint pointing at an unavailable tool
 is worse than no hint, because it burns an attempt before failing. They are async here
-(`task_id` → `get_task_result`), and none of the consent gates moved: creation lands as a
+(`task_id` → `get_task_result`; `app_id` → `get_app_web`), and none of the consent gates moved: creation lands as a
 **draft** (publishing stays a human act on the manage screen), and editing the contract of
 a **live** app still requires `despublicar: true`.
 
