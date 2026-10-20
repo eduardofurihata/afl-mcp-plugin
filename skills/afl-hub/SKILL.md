@@ -292,6 +292,7 @@ no model in the middle); for a JUDGEMENT
     `jira_ler_comentarios`, `jira_exportar_anexo`, `hubspot_crm_activities`,
     `hubspot_crm_files`, `notion_pages_export`, `google_gmail_read`,
     `google_calendar_read`, `google_drive_read`, `google_sheets_read`,
+    `google_analytics_read` (GA4, read-only — see the GA4 source under "Manage data sources"),
     `microsoft_mail_read`, `microsoft_calendar_read`, `microsoft_onedrive_read`,
     `microsoft_sharepoint_scan`, `microsoft_sharepoint_document`, `github_search`,
     `datasource_notion` (reads a configured Notion SOURCE — database/page — by `name`/`id`;
@@ -1969,6 +1970,24 @@ returns it, and the `integrationUuid` it gives you is *literally* the value
     campaign names first and only then query the numbers. Spend carries its own
     `account_currency` per account: **never sum accounts of different currencies** —
     report per account instead. The source is read-only; there is no write op.
+  - **Google Analytics (GA4) is a Google source with service `analytics` and a mandatory
+    `config.propertyIds`** (AV-2689). Create it as `google_services_data` with
+    `{ "googleSourceType": "analytics", "propertyIds": ["123456789"] }` plus the Google
+    `integration_uuid` (the aliases `google_analytics`/`ga4` already declare the service).
+    `propertyIds` is the SCOPE: without it every agent wired to the source would read every
+    property the Google login sees, so a missing/empty list — or an item that is not a
+    property id — is **refused** (nothing is created; on update, nothing changes). Ids are
+    numeric (`"properties/123"` is accepted and normalized); find them in GA → Admin →
+    Property settings. `update_data_source` with `config.propertyIds` REPLACES the list.
+    The flow: create the source → `connect_agent_data_source` → `google_analytics_read`
+    with that `agentId`: `list_properties` (only the source's properties come back),
+    then `get_metadata` for the exact dimension/metric API names, and only then
+    `run_report` (or `run_realtime_report`, last 30 min). A property outside the source is
+    refused before Google is called. The source uses the Google integration already
+    connected to it (the integration's connection includes `analytics.readonly`); if that
+    integration was connected before GA4 existed, the read says to reconnect the GOOGLE
+    INTEGRATION (Integrations → Google Workspace) — not a new source, and no separate
+    authorization on the source. Read-only: no write op.
   - **`mcp_server` requires `integration_uuid`, and the answer tells you whether the link
     took.** The runtime resolves the MCP server by a dedicated column, so a source created
     without the integration would list, hold a full tool catalog and connect to an agent
@@ -2691,9 +2710,19 @@ matches nothing is also refused rather than falling back to the only source ther
 
 `hubspot_crm_search` behaves the same way with one difference: what it disambiguates is
 the **portal**, not the source row — several sources pointing at the same HubSpot account
-are not ambiguous. And it has no source param to freeze, so the fix there is to declare
-the carrier `agente` on the capability (its connection picks the portal), or to keep a
-single account active.
+are not ambiguous. Its source param is `fonte` (the source name or id): freeze it in
+`bind` (`{ "fonte": "<source name>" }`), declare the carrier `agente` on the capability
+(its connection picks the portal), or keep a single account active. A `fonte` that
+matches no active source is refused. Every `hubspot_crm_*` tool accepts `fonte`, and an
+agent whose HubSpot sources live in different portals must pass it — without it the
+call is refused, never routed to "the first" portal.
+
+The Google tools (`google_gmail_*`, `google_calendar_*`, `google_drive_*`,
+`google_sheets_*`) follow the same rule by **account**: they use the account of the
+Google source linked to the agent, and accept an optional `accountId`. An agent whose
+sources of that service live in different Google accounts must pass it — without it the
+call is refused (`reason: "conta_ambigua"`) with the `accountId` of each source listed,
+never routed to the first source. An `accountId` outside the linked sources is refused.
 
 ## Generators you drive through the agent, not directly
 
