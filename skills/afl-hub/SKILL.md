@@ -355,8 +355,8 @@ no model in the middle); for a JUDGEMENT
     `notion_database_*_entry` write instead of guessing property names (they are
     LITERAL for Notion: accents and case are part of the name).
     **Several Notion workspaces:** the account comes from the agent's Notion SOURCE.
-    With sources in different workspaces, the target id decides (a page/database
-    pinned in one source); otherwise the call is refused with
+    With sources in different workspaces, the target decides — the id or the EXACT
+    title of a page/database pinned in one source, or the source name; otherwise the call is refused with
     `data.reason: 'conta_ambigua'` listing the sources by name — call again with
     `fonte: "<source name>"` (every `notion_*` tool takes it), or ask the user which
     source. Never ask the user for ids.
