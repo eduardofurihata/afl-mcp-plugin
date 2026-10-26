@@ -651,7 +651,16 @@ lacks it — surface verbatim):
   - **GitHub: write files with `github_files_commit`, branch with `github_branch_create`**
     (since 2026-10, AV-2642). `github_files_commit` `{ agentId, repo, branch, message,
     files: [{ path, content, encoding? }] }` writes N files in ONE atomic commit (create
-    or overwrite; it never deletes; the rest of the repo is untouched). The branch must
+    or overwrite; it never deletes; the rest of the repo is untouched). **A file that
+    already exists on AFL — a page, PDF, image or document a tool generated — goes BY
+    REFERENCE** (since 2026-10, AV-2673): `{ path, file_key }` (the `file_key` from
+    `meus_arquivos` or the tool's `s3Key`) or `{ path, file_url }` (the
+    `/api/documents/d/…` link of its `[AFL_FILE_URL:…]`, or of a squad's
+    `[ARQUIVOS DA EXECUÇÃO]`). The server reads the whole file, any size up to the
+    commit cap — don't pull the HTML through `consultar_pagina_web` (it caps at 60k
+    characters) and don't retype it. Exactly one source per file (`content` +
+    `file_key` together is refused); only YOUR files (the caller's; the agent owner's
+    only if generated in this same turn); an external URL is refused, never fetched. The branch must
     exist — `github_branch_create` `{ agentId, repo, branch, from_branch? }` makes one
     from the repo's default branch. Review flow: branch → commit → `github_pr_create`.
     A protected branch or a repository ruleset refuses direct commits, with no retry
@@ -738,7 +747,9 @@ lacks it — surface verbatim):
     `{ agentId, busca?, limit? }` (`tools:read`) — it lists the pages generated for
     this user, newest first, each with the `url` ready to pass to the editor.
     **Do not recreate a page to change it:** recreating loses everything the
-    original brief didn't repeat.
+    original brief didn't repeat. For a brand identity, pass the skill's stylesheets
+    in `estilos` (`["asset://<slug>/tokens.css"]`) — see "Brand kit for pages" under
+    skill attachments.
   - **`mcp__afl__consultar_pagina_web`** `{ agentId, pagina, formato?, busca?,
     limite_chars? }` (`tools:read`) **reads the page's content** — the piece that was
     missing from that chain. Use it **twice**:
@@ -949,7 +960,7 @@ lacks it — surface verbatim):
   `edges[]` — build steps from `list_agents` (agent-type step `config: { agentId }`).
   A step's `type` is one of **five**, and each one needs a **different `config`** —
   an incomplete `config` fails the whole DAG, so get it right up front:
-  `agent` → `{ agentId, instructions?, readOnly?, failureMarker? }` ·
+  `agent` → `{ agentId, instructions?, readOnly?, failureMarker?, pageConformance? }` ·
   `automation` → `{ automationId }` ·
   **`approval`** (human gate, pauses the run) → `{ approverUserIds: [...] }` **or**
   `{ approverGroupRole: "admin" | "member" }` — **one of them is mandatory**
@@ -1047,12 +1058,27 @@ lacks it — surface verbatim):
   the squad context, the trigger, the **entire output of every parent step** and
   every tool schema, while a chat message ships a question. *The path does not
   change the model; the path changes the size of the turn, and the size decides.*
-  So `get_squad` now returns, per agent step, the `functionality`, the matrix's
-  `matrixModel`/`matrixFallbackModel`, a `precedence[]` and
-  `mayAutoSwitchOnContext`. **There is no `config.model`, and there will not be**:
+  So `get_squad` returns, per agent step, **`resolvedModel`** — what the matrix gives
+  the step's carrier agent after the *whole* precedence (agent's own model → its
+  **subtype** row → the `chat` functionality row → default) — with `resolvedBy`
+  (`agent_model` | `agent_subtype` | `functionality` | `default`), `agentSubtype`,
+  `resolvedFallbackModel`, a `precedence[]` and `mayAutoSwitchOnContext`.
+  `matrixModelByFunctionality` is only the functionality row: when the subtype has a
+  row, it is **not** the step's model. Read `resolvedModel` before blaming (or
+  crediting) a model — a product squad's shallow artifacts were once pinned on a
+  "gpt-5-mini" no step had used; the steps had run on gpt-5.6-sol, gpt-5.6-terra and
+  claude-opus-5-5 through their subtypes. `resolvedModel` is a forecast: the economy
+  rules (internal task, summary, scheduled, large input, budget over 80%) and the
+  capacity swap only happen in the turn, so the *effective* model is still
+  `output.model` in `get_squad_run`. With images (`vision`), neither the agent's own
+  model nor its subtype row competes — the vision row decides.
+  **There is no `config.model`, and there will not be**:
   pinning a model on a step is the same LLM-matrix bypass that got `llm_model`
   removed from agents. If a step is landing on too small a model, the lever is the
-  size of the dossier it inherits (`includeParentOutputs`), not a pin.
+  size of the dossier it inherits (`includeParentOutputs`) or the carrier's subtype —
+  whose matrix row is shared by every agent with that subtype on the platform — not
+  a pin. Exception: `resolvedBy: agent_model` means the carrier has its OWN active
+  model, which beats the subtype — there, changing the subtype changes nothing.
 
   **A rejection can send the work back instead of killing the run.** Two pieces,
   and neither works alone: an edge's **`onOutcome`** (`"approved"` | `"rejected"`;
@@ -1117,6 +1143,19 @@ lacks it — surface verbatim):
   honest report *describes* the failures it found, so hunting for error words would fail
   the good result. Without the field the run projection still **signals** it
   (`selfDeclaredFailure: true` on the step), and signalling is not deciding.
+  **A page the step publishes can be checked by the PLATFORM** (AV-2673).
+  `failureMarker` is the agent declaring; `config.pageConformance` is verification.
+  - **Rules:** `{ maxLines?, noExternalRequests?, colorsOnlyFromTokens?, noImportant?, noInlineStyle?,
+    allowedFontWeights?: number[], requiredFont?, forbiddenTexts?: { fromStep, marker }, maxCorrections? }`.
+    `maxCorrections` is 0..2 and defaults to 2. An unknown key, or a config with no rule, is refused on save.
+  - **What gets checked:** the last page the turn published, before the step finishes. The brand block the
+    platform embeds (from `estilos` on `criar_pagina_web`) is outside lines, colours and weights.
+  - **Forbidden texts:** read from the lines `<marker> <text>` in the output of `fromStep`. That step must
+    reach this one (a direct edge, or an approval gate in between), or the save is refused.
+  - **A failed page:** the step opens a correction turn with the violation list and the page link, asking
+    for `editar_pagina_web`, not a new page. Once the corrections run out, the step fails without retry and
+    the list is in `error`. A check that could not run is a failure, never an approval.
+  - **Projection:** the run projection shows `pageConformance: { aprovada, rodadas, linhas?, avisos? }`.
   **A trigger contract, so a run is refused before it spends a step.** `create_squad` and
   `update_squad` take **`trigger_schema`**: `{ fields: [{ key, label, type: "string" |
   "date" | "number" | "enum", required, options?, description? }] }`. `run_squad` then
@@ -1597,7 +1636,7 @@ CRUD of the user's own agents and skills — separate from `chat_with_agent` (wh
   generic model, in silence. Two consequences worth planning around:
   - **Setting a subtype does not promise a better model.** It selects the matrix *row* an
     admin configured; a subtype with no row simply falls through to the `chat` functionality.
-    Confirm the outcome in `get_squad` → `modelResolution` (or the turn record) instead of
+    Confirm the outcome in `get_squad` → `modelResolution.resolvedModel` (or the turn record) instead of
     assuming the write bought you anything.
   - **It works on ORG agents too — at creation *and* on `update_agent`.** This doc said the
     opposite for a month: the refusal was real, but it lasted a single day, until
@@ -1825,9 +1864,12 @@ CRUD of the user's own agents and skills — separate from `chat_with_agent` (wh
   **`mcp__afl__upload_skill_asset`** `{ skill_id, file_name, content_base64 | url,
   description?, visibility?, replace? }` (`skills:write`): exactly ONE of
   `content_base64` / `url` (https only, redirects refused); 5 MB per file, 50 per
-  skill, types svg/png/jpg/jpeg/webp/gif/pdf/txt/md/csv/json/docx/xlsx/pptx; the name
-  is normalized (lowercase, no accents); SVG is sanitized (scripts, `on*`, external
-  references removed — `sanitizedRemovals` says how much); an existing name fails
+  skill, types svg/png/jpg/jpeg/webp/gif/pdf/txt/md/csv/json/css/woff2/docx/xlsx/pptx;
+  the name is normalized (lowercase, no accents); SVG is sanitized (scripts, `on*`,
+  external references removed — `sanitizedRemovals` says how much); a `.css` that
+  loads anything external (`@import`, `url()` other than `asset://`/`data:`/`#id`) or
+  contains `<` is REFUSED (`SKILL_ASSET_CSS_REJECTED`); `.woff2` is checked by its
+  `wOF2` signature; an existing name fails
   unless `replace: true`. **`mcp__afl__delete_skill_asset`** `{ skill_id, asset_id,
   confirm: true }` (`skills:write`) — destructive, refused without `confirm`.
   - Who can: managing = whoever can EDIT the skill (owner of a personal skill; org
@@ -1841,6 +1883,19 @@ CRUD of the user's own agents and skills — separate from `chat_with_agent` (wh
     `renderizar_pdf`, `criar_pagina_web` (`imagens[].url`) and `criar_documento`
     (`imagem_url`, `marca.logo_url`); text attachments are read in-turn with
     `obter_anexo_skill`. An agent WITHOUT the skill enabled is refused.
+  - **Brand kit for pages** — put the tokens stylesheet (`.css`, or a `.txt` holding
+    CSS) and the font (`.woff2`) on the skill, with an `@font-face` whose `src` is
+    `url(asset://<slug>/<font>.woff2)`; then pass the stylesheets in `estilos` of
+    `criar_pagina_web` / `editar_pagina_web`. The platform embeds them as one
+    `<style data-afl-brand>` block (fonts always as `data:`, even when public — the
+    in-app and share viewers only allow `font-src data:`), the page model writes
+    `var(--…)` from them, and edits keep the block untouched (the model never sees
+    it). A block the model writes itself is discarded.
+  - **The same kit in `renderizar_pdf` / `renderizar_imagem`** — in the `html`, cite the
+    stylesheet with `<link rel="stylesheet" href="asset://<slug>/<sheet>.css">` (it becomes a
+    `<style>` with the font embedded) or the font directly in
+    `@font-face { src: url(asset://<slug>/<font>.woff2) }`. Any other attachment in a
+    `url()` (not a font or an image) is refused, and nothing is rendered.
 - **Enable a skill on an agent (opt-in)** — `mcp__afl__list_agent_skills` `{ agent_id }`
   (`agents:read`) lists the skills enabled on an agent, each with an `agent_skill_id`
   (requires access to the agent: yours, or one of your organizations').
@@ -1975,6 +2030,15 @@ returns it, and the `integrationUuid` it gives you is *literally* the value
     that already names the service (`onedrive`, `outlook_calendar`) fills in a missing
     `serviceType` and completes a bare `"outlook"`: `outlook_calendar` +
     `{ "serviceType": "outlook" }` is the calendar, not the mailbox.
+    `teams_meetings` (AV-2757) is the person's **Teams meetings and their transcripts**
+    (canonical pair `serviceType: "teams"` + `teamsType: "meetings"`; plain `teams` stays
+    channels): no selection — it covers past and future meetings and is read **live**
+    (sync/reindex answer "lida ao vivo"). It exists **only as a personal source**: on an
+    organization it is refused with `TEAMS_MEETINGS_PERSONAL_ONLY`. The agent reads it with
+    `microsoft_teams_meetings_read`; an account connected before needs "Liberar reuniões"
+    (incremental Microsoft consent): on the account card in Integrações → Microsoft 365
+    (`/integracoes/microsoft-365`, Contas tab) — the path for a source created through the
+    hub — or in the source screen.
   - **`meta_ads_data` requires `integration_uuid` AND a non-empty `adAccountIds`.**
     One Meta login sees N Business Managers × N ad accounts, so a source that does not
     declare which accounts it covers would read every account the person can see. An
