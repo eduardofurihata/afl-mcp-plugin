@@ -1703,8 +1703,8 @@ CRUD of the user's own agents and skills — separate from `chat_with_agent` (wh
       `sponsorship`, plus the `user` ceiling), `organizationLimit.entry` (`organization` —
       the subscription/plan ceiling, which is a level ABOVE the cost centers and used to be
       invisible here), `automationLimits` (`automation`, one entry per automation that
-      *declares* a ceiling) and `platformKeyLimit` (`api_key`). Reading only `visible[]` and
-      concluding "nothing blocks" is the mistake this block was rebuilt to prevent: a refusal
+      *declares* a ceiling) and `platformSpendingCap` (`spending_cap`, the platform
+      spending ceiling). Reading only `visible[]` and concluding "nothing blocks" is the mistake this block was rebuilt to prevent: a refusal
       marked `quota_scope=organization` was once diagnosed against the fullest cost center,
       which was not the one denying.
     - **`blockingAny` vs `blockingAmongRead`.** `blockingAny` is `true` when something
@@ -1715,7 +1715,7 @@ CRUD of the user's own agents and skills — separate from `chat_with_agent` (wh
       `blockingAmongRead` is the weaker claim that is always safe: nothing refuses among the
       levels actually read. **Never turn `null` into "nothing blocks"** — repeat the call
       only when the cause is a failed read; for a partial cut, repeating changes nothing.
-    - **`platformKeyLimit` is a verdict without numbers.** It ships `enforced`, `blocking`
+    - **`platformSpendingCap` is a verdict without numbers.** It ships `enforced`, `blocking`
       and `exhausted[]`, and deliberately **omits `limits`/`usage`** (`numbersWithheld:
       true`, stated in `warnings`): that ceiling is the platform's own invoice and its
       counter aggregates every customer's usage, so the figures are not yours to see. The
