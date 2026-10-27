@@ -1756,8 +1756,8 @@ CRUD of the user's own agents and skills — separate from `chat_with_agent` (wh
       `sponsorship`, plus the `user` ceiling), `organizationLimit.entry` (`organization` —
       the subscription/plan ceiling, which is a level ABOVE the cost centers and used to be
       invisible here), `automationLimits` (`automation`, one entry per automation that
-      *declares* a ceiling) and `platformKeyLimit` (`api_key`). Reading only `visible[]` and
-      concluding "nothing blocks" is the mistake this block was rebuilt to prevent: a refusal
+      *declares* a ceiling) and `platformSpendingCap` (`spending_cap`, the platform
+      spending ceiling). Reading only `visible[]` and concluding "nothing blocks" is the mistake this block was rebuilt to prevent: a refusal
       marked `quota_scope=organization` was once diagnosed against the fullest cost center,
       which was not the one denying.
     - **`blockingAny` vs `blockingAmongRead`.** `blockingAny` is `true` when something
@@ -1768,12 +1768,19 @@ CRUD of the user's own agents and skills — separate from `chat_with_agent` (wh
       `blockingAmongRead` is the weaker claim that is always safe: nothing refuses among the
       levels actually read. **Never turn `null` into "nothing blocks"** — repeat the call
       only when the cause is a failed read; for a partial cut, repeating changes nothing.
-    - **`platformKeyLimit` is a verdict without numbers.** It ships `enforced`, `blocking`
+    - **`platformSpendingCap` is a verdict without numbers.** It ships `enforced`, `blocking`
       and `exhausted[]`, and deliberately **omits `limits`/`usage`** (`numbersWithheld:
       true`, stated in `warnings`): that ceiling is the platform's own invoice and its
       counter aggregates every customer's usage, so the figures are not yours to see. The
       verdict is still complete — and `manageAt` is `null` because there is no screen and no
       upgrade: if this one is blocking, nothing you do in the product changes it.
+      `hasCap` says a ceiling is **in force** at all (it was `hasKey` before AV-2588);
+      `enforced` says it also declares at least one limit — `hasCap: true` with
+      `enforced: false` is a ceiling in force that refuses nothing.
+    - **Old refusals still say `api_key`.** Before AV-2588 this level stamped
+      `quota_scope=api_key` ("…for API key global"). Refusals recorded back then — a squad
+      step's error, an automation pause event — keep that text. It is the **same platform
+      ceiling**: `api_key`, `spending_cap` and the message catalogue's `platform` all name it.
 - **Put an org agent in a group — and create the group if it isn't there.**
   `mcp__afl__list_organization_groups` `{ organization_id? }` (scope `agents:read`) lists
   the org's groups (`{ id, name, description, groupType, hierarchyLevel }`); omit the id to
