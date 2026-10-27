@@ -1774,6 +1774,13 @@ CRUD of the user's own agents and skills — separate from `chat_with_agent` (wh
       counter aggregates every customer's usage, so the figures are not yours to see. The
       verdict is still complete — and `manageAt` is `null` because there is no screen and no
       upgrade: if this one is blocking, nothing you do in the product changes it.
+      `hasCap` says a ceiling is **in force** at all (it was `hasKey` before AV-2588);
+      `enforced` says it also declares at least one limit — `hasCap: true` with
+      `enforced: false` is a ceiling in force that refuses nothing.
+    - **Old refusals still say `api_key`.** Before AV-2588 this level stamped
+      `quota_scope=api_key` ("…for API key global"). Refusals recorded back then — a squad
+      step's error, an automation pause event — keep that text. It is the **same platform
+      ceiling**: `api_key`, `spending_cap` and the message catalogue's `platform` all name it.
 - **Put an org agent in a group — and create the group if it isn't there.**
   `mcp__afl__list_organization_groups` `{ organization_id? }` (scope `agents:read`) lists
   the org's groups (`{ id, name, description, groupType, hierarchyLevel }`); omit the id to
