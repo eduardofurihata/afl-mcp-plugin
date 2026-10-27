@@ -810,6 +810,15 @@ lacks it — surface verbatim):
   term is too short or too generic (over the per-kind cap, nothing is deleted), and on
   an organization agent — never tell the user it was forgotten unless the call
   succeeded. The current conversation's own history still holds the value.
+- **Update something already saved** ("it changed: X is now Y") → `gerenciar_documentos`
+  `{ agentId, op: "substituir", titulo, conteudo: "<new value>", termos: ["<OLD value, literal>"] }`
+  (or `document_id` of the old note instead of `termos`) — never `op: "adicionar"`, which
+  leaves the old note active. It writes the new note first, then deletes the old one, and
+  with `termos` (personal agent) clears the old value from profile facts, Life Memory
+  episodes and entities. Only notes the agent saved from chat (`agent_chat`) are replaced;
+  an uploaded document is refused (use `op: "remover"`, which confirms). `success: false`
+  means nothing was replaced — or, with `error: "substituicao_parcial"`, that BOTH notes are
+  now active; `data.lifeMemory.estado` says whether memory was cleared (`limpa`) or not.
 - **Generate a file** → `mcp__afl__criar_documento` (`tools:write`)
   `{ agentId, formato: "xlsx"|"docx"|"pptx"|"pdf"|"md"|"html", titulo, conteudo }`.
   Synchronous: when it returns, the file already exists in storage. Read **`data.url`**
@@ -1625,6 +1634,17 @@ CRUD of the user's own agents and skills — separate from `chat_with_agent` (wh
   a send: if the agent still answers `APPROVAL_REQUIRED`, tell the user which master switch
   is missing (theirs, or the number's pairer's for an org agent), don't retry. `get_agent`
   returns it as `autoApproveWhatsappMessages`; the reply echoes it under `updated`.
+  **`is_publishable`** (boolean, personal **and** org agents, `update_agent` only) is the flag
+  that lets the agent chat in **free text with anonymous visitors of a public AFL App**.
+  Without it, every agent action of a public app is refused (`agent_not_public` for the
+  visitor, `lastDenial.reason: agent_not_publishable` for the owner in `get_app_web`). It is
+  **not** `is_public` (store listing for signed-in users) — never use one for the other.
+  Same authorization as the UI toggle: on a personal agent, **only the agent's owner**; on an
+  org agent, an **active admin/owner of the agent's organization**. Anyone else gets an error
+  and nothing in that `update_agent` call is written. It is written before the rest of the
+  update through its own route; the reply echoes it under `updated` as `isPublishable`.
+  Turning it on exposes the agent's connected data to anyone with the app link — confirm
+  with the user before setting `true`.
   **`agent_type` is the one model lever a tool has.** It is the same value `get_agent`
   returns as `agentType`, and it is the matrix's subtype row: precedence is *agent's own
   model → **subtype** → functionality → default*. Omitted, an agent is born `assistant`,
@@ -2647,6 +2667,14 @@ Notes that save a wrong conclusion:
   *now*?": the window average cannot, since 10 consecutive failures at the end score the
   same as 10 spread out. `listar_apps` carries the two that change how a row reads
   (`failedInvocations`, `lastInvocationStatus`); the full breakdown is here.
+  `lastDenial` `{ reason, at }` says **why** the most recent refusal happened — the code
+  from the audit (`agent_not_publishable`, `budget_exceeded`, `visitor_budget_exceeded`,
+  `viewer_forbidden`, `anonymous_not_enabled`, `agent_not_accessible`,
+  `tool_route_unavailable`, `requires_confirmation`, `payer_center_exhausted`, or a manifest
+  reason such as `invalid_param`). `agent_not_publishable` means a public app's agent lacks
+  the public-use flag: every visitor is refused until `update_agent { is_publishable: true }`
+  (see the agent section). A visitor of a public app sees `agent_not_public` — a definitive
+  refusal, never "try again".
 
 ## Linking one app to another — `navegacao`
 
