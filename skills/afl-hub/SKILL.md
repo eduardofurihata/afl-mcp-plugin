@@ -1607,9 +1607,12 @@ CRUD of the user's own agents and skills — separate from `chat_with_agent` (wh
   for the agent's owner** — or, for an org agent, whoever can train or administer it.
   Anyone else who can use the agent (a shared, public or subscribed agent, or an org
   agent you can only *interact* with) gets its card (`id`, `name`, `description`,
-  avatar, `isActive`, `organizationId`) — no `prompt`, no personality, no parameters.
-  That is the same rule the AFL screens apply; a missing `prompt` means "not yours to
-  read", not "empty prompt".
+  avatar, `isActive`, `organizationId`, `configWithheld: true`) — no `prompt`, no
+  personality, no parameters. That is the same rule the AFL screens apply:
+  `configWithheld: true` means "not yours to read", not "empty prompt". The owner of the
+  organization (recorded as its owner/admin) always counts as able to administer its
+  agents. `update_agent` with `prompt_edits`/`prompt_append` on such a card is refused
+  for permission — nothing is written.
   **`mcp__afl__create_agent`** (scope `agents:write`): without `organization_id` it creates
   a **personal** agent (only `name` ≥3 chars required); with `organization_id` it creates an
   **org** agent (requires `name` + `prompt`, and the user must be **admin/owner** of the
