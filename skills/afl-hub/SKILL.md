@@ -1603,7 +1603,13 @@ CRUD of the user's own agents and skills — separate from `chat_with_agent` (wh
 - **Agents (org-aware)** — the CRUD tools route automatically between **personal**
   agents and **organization** agents (which live in the b2b service). `mcp__afl__get_agent`
   `{ agent_id }` (scope `agents:read`) returns the full config for either — for an org
-  agent it also carries `groups` (the groups it is linked to).
+  agent it also carries `groups` (the groups it is linked to). **The full config is only
+  for the agent's owner** — or, for an org agent, whoever can train or administer it.
+  Anyone else who can use the agent (a shared, public or subscribed agent, or an org
+  agent you can only *interact* with) gets its card (`id`, `name`, `description`,
+  avatar, `isActive`, `organizationId`) — no `prompt`, no personality, no parameters.
+  That is the same rule the AFL screens apply; a missing `prompt` means "not yours to
+  read", not "empty prompt".
   **`mcp__afl__create_agent`** (scope `agents:write`): without `organization_id` it creates
   a **personal** agent (only `name` ≥3 chars required); with `organization_id` it creates an
   **org** agent (requires `name` + `prompt`, and the user must be **admin/owner** of the
