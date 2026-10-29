@@ -1612,8 +1612,9 @@ CRUD of the user's own agents and skills — separate from `chat_with_agent` (wh
   `voiceSimilarityBoost`) — no `prompt`, no personality, no parameters. That is the same
   rule the AFL screens apply:
   `configWithheld: true` means "not yours to read", not "empty prompt". The owner of the
-  organization (recorded as its owner/admin) always counts as able to administer its
-  agents — unless that person has a deactivated membership there (a former member).
+  organization (its recorded owner) always counts as able to administer its agents;
+  its recorded admin counts only while they have no membership row there. A former
+  member (deactivated membership) never counts.
   `update_agent` with `prompt_edits`/`prompt_append` on such a card is refused
   for permission — nothing is written.
   **`mcp__afl__create_agent`** (scope `agents:write`): without `organization_id` it creates
